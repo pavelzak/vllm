@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import os
+import shutil
+import subprocess
 import types
 from importlib.metadata import version
 from importlib.util import find_spec
@@ -11,6 +13,56 @@ from vllm.platforms import current_platform
 from vllm.utils.math_utils import cdiv
 
 logger = init_logger(__name__)
+
+
+def _configure_triton_ptxas_for_new_gpus():
+    """Auto-configure TRITON_PTXAS_PATH for SM>=110 GPUs."""
+    if os.environ.get("TRITON_PTXAS_PATH"):
+        return
+
+    cuda_home = os.environ.get("CUDA_HOME", "/usr/local/cuda")
+    system_ptxas_paths = [
+        os.path.join(cuda_home, "bin", "ptxas"),
+        "/usr/local/cuda/bin/ptxas",
+        shutil.which("ptxas"),
+    ]
+
+    system_ptxas = None
+    for path in system_ptxas_paths:
+        if path and os.path.isfile(path) and os.access(path, os.X_OK):
+            system_ptxas = path
+            break
+
+    if not system_ptxas:
+        return
+
+    try:
+        from triton.backends import backends
+        nvidia_backend = backends.get("nvidia")
+        if nvidia_backend is None or nvidia_backend.driver is None:
+            return
+        if not nvidia_backend.driver.is_active():
+            return
+        driver_instance = nvidia_backend.driver()
+        target = driver_instance.get_current_target()
+        if target.arch >= 110:
+            result = subprocess.run(
+                [system_ptxas, "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                os.environ["TRITON_PTXAS_PATH"] = system_ptxas
+                major, minor = divmod(target.arch, 10)
+                logger.info(
+                    "Detected GPU arch=%d (SM%d.%d). "
+                    "Configuring TRITON_PTXAS_PATH=%s",
+                    target.arch, major, minor, system_ptxas,
+                )
+    except Exception as e:
+        logger.debug("Failed to auto-configure TRITON_PTXAS_PATH: %s", e)
+
+
+_configure_triton_ptxas_for_new_gpus()
 
 HAS_TRITON = (
     find_spec("triton") is not None
