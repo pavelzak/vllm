@@ -91,6 +91,7 @@ class FlashMLASparseBackend(AttentionBackend):
         "auto",
         "bfloat16",
         "fp8_ds_mla",
+        "nvfp4_ds_mla",
         "fp8",  # alias for fp8_ds_mla
     ]
 
@@ -561,12 +562,12 @@ class FlashMLASparseImpl(SparseMLACommonImpl[FlashMLASparseMetadata]):
         max_tokens = vllm_config.scheduler_config.max_num_batched_tokens
         q_concat_shape = (max_tokens, num_heads, head_size)
         if is_quantized_kv_cache(kv_cache_dtype):
-            assert kv_cache_dtype == "fp8_ds_mla", (
-                "FlashMLA Sparse Attention backend fp8 only supports "
-                "fp8_ds_mla kv-cache dtype"
+            assert kv_cache_dtype in ("fp8_ds_mla", "nvfp4_ds_mla"), (
+                "FlashMLA Sparse Attention backend only supports "
+                "fp8_ds_mla/nvfp4_ds_mla kv-cache dtype"
             )
 
-        if kv_cache_dtype == "fp8_ds_mla":
+        if kv_cache_dtype in ("fp8_ds_mla", "nvfp4_ds_mla"):
             # Reserve workspace during initialization
             assert vllm_config is not None and vllm_config.model_config is not None
             prefill_workspace_size = get_prefill_workspace_size(

@@ -47,6 +47,10 @@ if TYPE_CHECKING:
     VLLM_LOG_STATS_INTERVAL: float = 10.0
     VLLM_TRACE_FUNCTION: int = 0
     VLLM_USE_FLASHINFER_SAMPLER: bool = True
+    VLLM_USE_B12X_MOE: bool = False
+    VLLM_B12X_W4A16_FORCE_BLOCKS_PER_SM: int = 0
+    VLLM_B12X_W4A16_FORCE_BLOCKS_MAX_M: int = 16
+    VLLM_B12X_W4A16_FORCE_TILE_CONFIG: str = ""
     VLLM_PP_LAYER_PARTITION: str | None = None
     VLLM_CPU_KVCACHE_SPACE: int | None = 0
     VLLM_CPU_OMP_THREADS_BIND: str = "auto"
@@ -1046,6 +1050,16 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # Default: 512 MB
     "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB": lambda: int(
         os.getenv("VLLM_SPARSE_INDEXER_MAX_LOGITS_MB", "512")
+    ),
+    "VLLM_USE_B12X_MOE": lambda: bool(int(os.getenv("VLLM_USE_B12X_MOE", "0"))),
+    "VLLM_B12X_W4A16_FORCE_BLOCKS_PER_SM": lambda: int(
+        os.getenv("VLLM_B12X_W4A16_FORCE_BLOCKS_PER_SM", "0")
+    ),
+    "VLLM_B12X_W4A16_FORCE_BLOCKS_MAX_M": lambda: int(
+        os.getenv("VLLM_B12X_W4A16_FORCE_BLOCKS_MAX_M", "16")
+    ),
+    "VLLM_B12X_W4A16_FORCE_TILE_CONFIG": lambda: os.getenv(
+        "VLLM_B12X_W4A16_FORCE_TILE_CONFIG", ""
     ),
     # If set, the OpenAI API server will stay alive even after the underlying
     # AsyncLLMEngine errors and stops serving requests

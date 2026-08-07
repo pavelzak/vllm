@@ -78,6 +78,15 @@ def _resolve_dsv4_kv_cache_dtype(
     page-size specs pick the 576B per-token slot). Plain-row backends store each
     token's KV row in its element dtype: bf16 or per-tensor FP8 E4M3.
     """
+    if kv_cache_dtype in ("nvfp4", "nvfp4_ds_mla"):
+        assert use_fp8_ds_mla_layout, (
+            "DeepseekV4 nvfp4 KV cache requires the sparse MLA padded layout"
+        )
+        if cache_config is not None:
+            cache_config.cache_dtype = "nvfp4_ds_mla"
+        logger.info_once("Using DeepSeek V4 padded nvfp4_ds_mla KV cache format.")
+        return "nvfp4_ds_mla", torch.uint8
+
     if use_fp8_ds_mla_layout:
         # fp8_ds_mla block format: UE8M0 block-scaled fp8 packed as uint8.
         assert kv_cache_dtype.startswith("fp8"), (
@@ -607,18 +616,18 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
             self.compress_ratio <= 1
         ):  # SWA part. Allocated separately as DeepseekV4SWACache.
             return None
-        # fp8_ds_mla is a UE8M0 block-scaled uint8 layout and needs 576B
+        # fp8_ds_mla/nvfp4_ds_mla are padded uint8 layouts and need a fixed
         # alignment; plain bf16 / per-tensor fp8 rows use natural element-size
         # pages.
-        uses_fp8_ds_mla_layout = self.kv_cache_dtype == "fp8_ds_mla"
+        uses_ds_mla_layout = self.kv_cache_dtype in ("fp8_ds_mla", "nvfp4_ds_mla")
         return MLAAttentionSpec(
             block_size=vllm_config.cache_config.block_size,
             num_kv_heads=1,
             head_size=self.head_dim,
-            dtype=torch.uint8 if uses_fp8_ds_mla_layout else self.kv_cache_torch_dtype,
+            dtype=torch.uint8 if uses_ds_mla_layout else self.kv_cache_torch_dtype,
             compress_ratio=self.compress_ratio,
             cache_dtype_str=self.kv_cache_dtype,
-            alignment=576 if uses_fp8_ds_mla_layout else 512,
+            alignment=584 if uses_ds_mla_layout else 512,
             model_version="deepseek_v4",
             kv_quant_mode=get_kv_quant_mode(self.kv_cache_dtype),
         )
