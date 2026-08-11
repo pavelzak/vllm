@@ -545,7 +545,15 @@ def has_fbgemm_gpu() -> bool:
 
 
 def has_cutedsl() -> bool:
-    """Whether the optional `cutelass` package is available."""
+    """Whether the optional `cutelass` package is available.
+
+    VLLM_DISABLE_CUTEDSL=1 force-disables it: on GB10/SM12.1 the CuTeDSL
+    kernels (e.g. DSV4 fused_indexer_q_cutedsl) fail with an internal
+    compiler error; the non-cutedsl fallbacks work.
+    """
+    import os
+    if os.environ.get("VLLM_DISABLE_CUTEDSL", "0") == "1":
+        return False
     return _has_module("cutlass")
 
 
