@@ -358,6 +358,11 @@ class SpecDecodeBaseProposer:
             self.parallel_drafting_token_id = model_hf_config.pard_token
         elif hasattr(model_hf_config, "ptd_token_id"):
             self.parallel_drafting_token_id = model_hf_config.ptd_token_id
+        elif hasattr(model_hf_config, "dspark_noise_token_id"):
+            # DeepSeek-V4 DSpark checkpoints (e.g. V4-Flash-0731) store the
+            # parallel-draft filler token as dspark_noise_token_id; the V2
+            # runner path (worker/gpu/spec_decode/utils.py) already honors it.
+            self.parallel_drafting_token_id = model_hf_config.dspark_noise_token_id
         else:
             raise ValueError(
                 "For parallel drafting, the draft model config must have "
