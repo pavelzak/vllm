@@ -879,6 +879,10 @@ class DeepseekV4FlashInferSM120Attention(DeepseekV4Attention):
             )
 
             q_chunk = q[query_start:query_end]
+            if q_chunk.shape[0] == 0:
+                # Empty chunk (zero-token span in query_start_loc): the
+                # flashinfer sparse kernel crashes reshaping 0 elements.
+                continue
             swa_indices_chunk = swa_metadata.prefill_swa_indices[query_start:query_end]
             swa_lens_chunk = swa_metadata.prefill_swa_lens[query_start:query_end]
             if extra_kv_paged is not None and extra_sparse_indices_chunk is None:
