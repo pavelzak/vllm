@@ -432,7 +432,8 @@ def _b12x_tp_moe():
 
 def _b12x_prepare_weights():
     try:
-        prepare_b12x_fp4_moe_weights = _b12x_prepare_weights()  # <= 0.15.x
+        from b12x.integration import prepare_b12x_fp4_moe_weights  # <= 0.15.x
+
         return prepare_b12x_fp4_moe_weights
     except ImportError:
         from b12x.moe.fused_moe._impl import (  # >= 1.x
