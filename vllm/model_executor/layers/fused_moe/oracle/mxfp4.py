@@ -628,6 +628,22 @@ def select_deepseek_v4_mxfp4_moe_backend(
         assert last_error is not None
         raise last_error
 
+    # Env-based B12X selection, restored from the dspark image's oracle
+    # (its line 611: `if runner_backend == "auto" and envs.VLLM_USE_B12X_MOE`).
+    # This DSV4-specific selector is the one the model actually calls; the
+    # 0.26 rewrite dropped the env branch, silently falling back to
+    # DEEPGEMM_MXFP4 (~-48% decode on GB10 per dspark recipe measurements).
+    from vllm import envs as _envs
+
+    if _envs.VLLM_USE_B12X_MOE:
+        return _return_or_raise(
+            Mxfp4MoeBackend.B12X_MXFP4,
+            config,
+            kMxfp4Static,
+            _backend_activation_key(Mxfp4MoeBackend.B12X_MXFP4),
+            activation_format,
+        )
+
     # DeepSeek-V4 on ROCm: prefer AITER FlyDSL MoE (better perf + accuracy
     # after shuffle/TP-offset fixes), with Triton-unfused as fallback.
     if (
