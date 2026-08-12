@@ -53,7 +53,7 @@ def _plan_b12x_moe_fp4_scratch(
     apply_router_weight_on_input: bool = False,
     swiglu_limit: float | None = None,
 ):
-    from b12x.integration.tp_moe import TPMoEScratchCaps, plan_tp_moe_scratch
+    _tp = _b12x_tp_moe(); TPMoEScratchCaps = _tp.TPMoEScratchCaps; plan_tp_moe_scratch = _tp.plan_tp_moe_scratch
 
     return plan_tp_moe_scratch(
         TPMoEScratchCaps(
@@ -133,7 +133,7 @@ def _run_b12x_moe_fp4(
     scratch: torch.Tensor,
 ) -> None:
     """Call b12x MoE with caller-owned live scratch."""
-    from b12x.integration.tp_moe import b12x_moe_fp4
+    b12x_moe_fp4 = _b12x_tp_moe().b12x_moe_fp4
 
     binding = plan.bind(
         scratch=scratch,
@@ -257,7 +257,7 @@ def _maybe_apply_b12x_w4a16_selector_override() -> None:
         return
 
     try:
-        from b12x.moe.fused.w4a16 import kernel as w4a16_kernel
+        w4a16_kernel = _b12x_w4a16_kernel()
     except Exception:
         logger.warning(
             "Could not install B12X W4A16 MoE selector override; b12x "
@@ -331,7 +331,7 @@ _maybe_apply_b12x_w4a16_selector_override()
 
 def _prepare_b12x_fp4_moe_weights(**kwargs):
     _maybe_apply_b12x_w4a16_selector_override()
-    from b12x.integration import prepare_b12x_fp4_moe_weights
+    prepare_b12x_fp4_moe_weights = _b12x_prepare_weights()
 
     return prepare_b12x_fp4_moe_weights(**kwargs)
 
@@ -415,12 +415,46 @@ def _normalize_b12x_moe_topk_weights(topk_weights: torch.Tensor) -> torch.Tensor
     return topk_weights
 
 
+def _b12x_tp_moe():
+    """Import the b12x TP-MoE module across package layouts.
+
+    b12x <=0.15.x exposes it as b12x.integration.tp_moe; >=1.x moved the
+    same symbols (identical names/signatures: b12x_moe_fp4,
+    plan_tp_moe_scratch, TPMoEScratchCaps, ...) to b12x.moe.fused_moe._impl.
+    """
+    try:
+        from b12x.integration import tp_moe  # <= 0.15.x
+        return tp_moe
+    except ImportError:
+        from b12x.moe.fused_moe import _impl  # >= 1.x
+        return _impl
+
+
+def _b12x_prepare_weights():
+    try:
+        prepare_b12x_fp4_moe_weights = _b12x_prepare_weights()  # <= 0.15.x
+        return prepare_b12x_fp4_moe_weights
+    except ImportError:
+        from b12x.moe.fused_moe._impl import (  # >= 1.x
+            prepare_b12x_fp4_moe_weights,
+        )
+        return prepare_b12x_fp4_moe_weights
+
+
+def _b12x_w4a16_kernel():
+    try:
+        from b12x.moe.fused.w4a16 import kernel  # <= 0.15.x
+        return kernel
+    except ImportError:
+        from b12x.moe._shared.kernels import w4a16  # >= 1.x
+        return w4a16
+
+
 def _has_b12x() -> bool:
     try:
-        from b12x.integration.tp_moe import b12x_moe_fp4  # noqa: F401
-
+        _b12x_tp_moe().b12x_moe_fp4  # noqa: B018
         return True
-    except ImportError:
+    except (ImportError, AttributeError):
         return False
 
 
