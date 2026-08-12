@@ -781,6 +781,18 @@ class DeepseekV4FlashInferSM120Attention(DeepseekV4Attention):
             next_n = num_decode_tokens // num_decodes
             q = q.view(num_decodes, next_n, *q.shape[1:])
             out_arg = output.view(num_decodes, next_n, *output.shape[1:])
+            # Companion tensors must match the [batch, next_n, ...] layout the
+            # 4-D query implies (flashinfer validates indices against it).
+            swa_indices = swa_indices.reshape(num_decodes, next_n, -1)
+            swa_lens = swa_lens.reshape(num_decodes, next_n)
+            if extra_sparse_indices is not None:
+                extra_sparse_indices = extra_sparse_indices.reshape(
+                    num_decodes, next_n, -1
+                )
+            if extra_sparse_lengths is not None:
+                extra_sparse_lengths = extra_sparse_lengths.reshape(
+                    num_decodes, next_n
+                )
         flashinfer_trtllm_batch_decode_sparse_mla_dsv4(
             query=q,
             swa_kv_cache=swa_cache,
