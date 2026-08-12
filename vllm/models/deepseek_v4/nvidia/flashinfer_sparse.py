@@ -766,13 +766,28 @@ class DeepseekV4FlashInferSM120Attention(DeepseekV4Attention):
             raise RuntimeError(
                 "Compressed sparse MLA decode requires compressed sparse indices."
             )
+        # flashinfer's dsv4 decode API expects query as
+        # [batch, q_len_per_request, heads, 512]. With speculative decoding
+        # (next_n = k+1 tokens per request) a flattened [tokens, heads, 512]
+        # is ambiguous: flashinfer's normalizer misroutes it to the varlen
+        # prefill kernel, whose SM120 build asserts num_tokens > 64
+        # ("Decode ... must go through sparse_mla_sm120_decode_dsv4").
+        out_arg = output
+        if num_decodes > 0 and num_decode_tokens > num_decodes:
+            assert num_decode_tokens % num_decodes == 0, (
+                f"ragged spec decode batch: {num_decode_tokens} tokens over "
+                f"{num_decodes} requests"
+            )
+            next_n = num_decode_tokens // num_decodes
+            q = q.view(num_decodes, next_n, *q.shape[1:])
+            out_arg = output.view(num_decodes, next_n, *output.shape[1:])
         flashinfer_trtllm_batch_decode_sparse_mla_dsv4(
             query=q,
             swa_kv_cache=swa_cache,
             workspace_buffer=self._get_workspace(q.device),
             sparse_indices=swa_indices,
             compressed_kv_cache=extra_cache,
-            out=output,
+            out=out_arg,
             bmm1_scale=self.scale,
             sinks=self.attn_sink,
             kv_layout="NHD",
