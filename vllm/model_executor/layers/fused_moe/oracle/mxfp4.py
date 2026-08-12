@@ -507,6 +507,23 @@ def select_mxfp4_moe_backend(
         assert last_error is not None
         raise last_error
 
+    # Restore the dspark-image's env-based B12X selection (its oracle had:
+    # `if runner_backend == "auto" and envs.VLLM_USE_B12X_MOE:`). The 0.26
+    # rewrite dropped this branch; without it the env is dead code and auto
+    # silently picks DEEPGEMM_MXFP4 (~-48% decode on GB10 per recipe data).
+    from vllm import envs as _envs
+
+    if _envs.VLLM_USE_B12X_MOE:
+        return _return_or_raise(
+            Mxfp4MoeBackend.B12X_MXFP4,
+            config,
+            kMxfp4Static,
+            requested_activation_key
+            if requested_activation_key is not None
+            else _backend_activation_key(Mxfp4MoeBackend.B12X_MXFP4),
+            activation_format,
+        )
+
     # Select kernels in order of backend.
     AVAILABLE_BACKENDS = _filter_by_activation(
         _get_priority_backends_for_gpt_oss(), requested_activation_key
