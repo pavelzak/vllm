@@ -627,13 +627,11 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
             dtype=torch.uint8 if uses_ds_mla_layout else self.kv_cache_torch_dtype,
             compress_ratio=self.compress_ratio,
             cache_dtype_str=self.kv_cache_dtype,
-            # 584B is the b12x NVFP4 padded envelope; fp8_ds_mla keeps
-            # upstream 576B (mismatch breaks KV page-size grouping asserts).
-            alignment=(
-                584
-                if self.kv_cache_dtype == "nvfp4_ds_mla"
-                else (576 if uses_ds_mla_layout else 512)
-            ),
+            # 584B padded envelope for ALL ds_mla layouts: flashinfer 0.6.16+
+            # SM120 sparse kernels validate uint8 cache rows == 584 bytes, and
+            # SlidingWindowMLASpec pages are 584-based - uniform 584 keeps the
+            # KV page-size grouping invariant AND the kernel contract.
+            alignment=584 if uses_ds_mla_layout else 512,
             model_version="deepseek_v4",
             kv_quant_mode=get_kv_quant_mode(self.kv_cache_dtype),
         )
