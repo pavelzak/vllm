@@ -254,10 +254,13 @@ class DeepseekV4B12XSM120Attention(DeepseekV4FlashInferSM120Attention):
         workspace.tmp_lse = mid_lse
         workspace.output_buffer = output
 
-        swa_cache = self._as_sparse_cache(self.swa_cache_layer.kv_cache)
-        extra_cache = (
-            self._as_sparse_cache(kv_cache) if kv_cache is not None else None
-        )
+        # Pass caches RAW, exactly as the overlay did: b12x performs its own
+        # byte-view internally (_compressed_mla_cache_byte_view). The parent
+        # class's _as_sparse_cache() adds an unsqueeze(-2) for flashinfer's
+        # 4-D layout, which silently mis-strides b12x's gather (garbage
+        # output, no exception).
+        swa_cache = self.swa_cache_layer.kv_cache
+        extra_cache = kv_cache
         if extra_cache is not None and extra_sparse_indices is None:
             raise RuntimeError(
                 "Compressed sparse MLA decode requires compressed sparse indices."
