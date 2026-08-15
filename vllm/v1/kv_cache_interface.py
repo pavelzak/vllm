@@ -347,6 +347,11 @@ def _apply_alignment_padding(spec: MLAAttentionSpec | SlidingWindowMLASpec):
         return
     actual_page_size = spec.real_page_size_bytes
     padded_page_size = round_up(actual_page_size, spec.alignment)
+    # Honor an explicitly-requested larger pad from the spec constructor
+    # (e.g. DSV4 nvfp4 pads the C4A group up to the SWA page size to keep
+    # the KV grouping invariant); never shrink it.
+    if spec.page_size_padded is not None:
+        padded_page_size = max(padded_page_size, spec.page_size_padded)
     if padded_page_size != actual_page_size:
         object.__setattr__(spec, "page_size_padded", padded_page_size)
 
