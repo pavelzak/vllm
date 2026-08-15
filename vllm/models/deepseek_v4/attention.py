@@ -636,6 +636,16 @@ class DeepseekV4Attention(nn.Module, AttentionLayerBase, ABC):
             ),
             model_version="deepseek_v4",
             kv_quant_mode=get_kv_quant_mode(self.kv_cache_dtype),
+            # nvfp4 packs C4A rows ~4x smaller, dropping this group's page
+            # below the SWA page (64 tok x 584B rounded to 576-align = 37440B),
+            # which violates the KV grouping invariant
+            # (max(sm_page_sizes) <= max(all_page_sizes)). Pad the largest
+            # compressed group's pages up to the SWA page (~+12% on C4A KV).
+            page_size_padded=(
+                37440
+                if self.kv_cache_dtype == "nvfp4_ds_mla" and self.compress_ratio == 4
+                else None
+            ),
         )
 
 
