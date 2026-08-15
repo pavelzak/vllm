@@ -193,6 +193,47 @@ class DeepseekV4B12XSM120Attention(DeepseekV4FlashInferSM120Attention):
         swa_only: bool,
         output: torch.Tensor,
     ) -> None:
+        # Shadow mode (VLLM_DSV4_B12X_SHADOW=1): compute BOTH flashinfer and
+        # b12x on identical inputs, serve flashinfer's output, log divergence.
+        shadow = os.getenv("VLLM_DSV4_B12X_SHADOW", "0") == "1"
+        if shadow:
+            super()._forward_decode(
+                q, kv_cache, swa_metadata, attn_metadata, swa_only, output
+            )
+            ref = output.clone()
+            b12x_out = torch.empty_like(output)
+            try:
+                self._b12x_decode(
+                    q, kv_cache, swa_metadata, attn_metadata, swa_only, b12x_out
+                )
+                diff = (b12x_out.float() - ref.float()).abs()
+                logger.info(
+                    "b12x shadow[%s]: tokens=%d max_diff=%.4f mean_diff=%.4f "
+                    "ref_absmax=%.4f b12x_absmax=%.4f b12x_nan=%s",
+                    self.prefix,
+                    output.shape[0],
+                    diff.max().item(),
+                    diff.mean().item(),
+                    ref.abs().max().item(),
+                    b12x_out.abs().max().item(),
+                    bool(torch.isnan(b12x_out).any().item()),
+                )
+            except Exception:
+                logger.exception("b12x shadow[%s]: kernel raised", self.prefix)
+            return
+        self._b12x_decode(
+            q, kv_cache, swa_metadata, attn_metadata, swa_only, output
+        )
+
+    def _b12x_decode(
+        self,
+        q: torch.Tensor,
+        kv_cache: torch.Tensor | None,
+        swa_metadata: "DeepseekSparseSWAMetadata",
+        attn_metadata: DeepseekV4FlashMLAMetadata | None,
+        swa_only: bool,
+        output: torch.Tensor,
+    ) -> None:
         compressed_mla_decode_forward, _, api_gen = _import_b12x_compressed_decode()
 
         num_decodes = swa_metadata.num_decodes
