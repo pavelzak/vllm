@@ -82,7 +82,7 @@ class DeepseekV4SWACache(torch.nn.Module, AttentionLayerBase):
     def get_kv_cache_spec(self, vllm_config: VllmConfig) -> KVCacheSpec:
         # fp8_ds_mla's UE8M0 paged layout needs 576B alignment; contiguous
         # bf16/fp8 cache uses the natural element-size page.
-        uses_fp8_ds_mla_layout = self.cache_config.cache_dtype == "fp8_ds_mla"
+        uses_fp8_ds_mla_layout = self.cache_config.cache_dtype in ("fp8_ds_mla", "nvfp4_ds_mla")  # SWA stays fp8-packed under nvfp4_ds_mla
         return SlidingWindowMLASpec(
             block_size=self.block_size,
             num_kv_heads=1,
@@ -138,7 +138,7 @@ class DeepseekSparseSWABackend(AttentionBackend):
         cache_dtype_str: str = "auto",
     ) -> tuple[int, ...]:
         assert num_kv_heads == 1
-        if cache_dtype_str == "fp8_ds_mla":
+        if cache_dtype_str in ("fp8_ds_mla", "nvfp4_ds_mla"):
             # DeepseekV4 SWA: 584B per token (448 NoPE + 128 RoPE + 8 fp8 scale).
             # head_size passed in is the semantic head_dim (512).
             return (num_blocks, block_size, 584)

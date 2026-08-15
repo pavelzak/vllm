@@ -177,7 +177,7 @@ class CompressorStateCache(torch.nn.Module, AttentionLayerBase):
         # fp8_ds_mla is the UE8M0 paged layout and needs 576B alignment. Plain
         # full-cache rows share state pages with contiguous KV pages, so padding
         # would break page matching.
-        uses_fp8_ds_mla_layout = vllm_config.cache_config.cache_dtype == "fp8_ds_mla"
+        uses_fp8_ds_mla_layout = vllm_config.cache_config.cache_dtype in ("fp8_ds_mla", "nvfp4_ds_mla")
         return SlidingWindowMLASpec(  # only has one vector instead of K + V
             block_size=self.block_size,
             num_kv_heads=1,
