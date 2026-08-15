@@ -1656,6 +1656,15 @@ def _get_kv_cache_groups_uniform_groups(
     for sm_spec in swa_mla_specs:
         sm_page_sizes = sm_spec.get_page_sizes()
         layers_per_size: dict[int, list[str]] = defaultdict(list)
+        if max(sm_page_sizes) > max(all_page_sizes):
+            logger.error(
+                "KV page-size grouping violation: sm_page_sizes=%s "
+                "all_page_sizes(full_mla)=%s sm_specs=%s",
+                sorted(set(sm_page_sizes)),
+                sorted(set(all_page_sizes)),
+                {n: (sp.block_size, sp.page_size_bytes)
+                 for n, sp in list(sm_spec.kv_cache_specs.items())[:3]},
+            )
         assert max(sm_page_sizes) <= max(all_page_sizes)
 
         # Unify page size by padding layers' page_size to the nearest larger page_size.

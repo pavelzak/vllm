@@ -787,6 +787,16 @@ def _select_dsv4_attn_cls(vllm_config: VllmConfig) -> type[DeepseekV4Attention]:
         return DeepseekV4FlashMLAAttention
 
     if device_capability is not None and device_capability.major == 12:
+        from vllm.models.deepseek_v4.nvidia.b12x_sparse import (
+            DeepseekV4B12XSM120Attention,
+            use_b12x_compressed_mla,
+        )
+
+        if use_b12x_compressed_mla():
+            # b12x compressed-MLA decode (prefill stays on FlashInfer):
+            # page-size agnostic and CUDA-graph capture-safe; ported from the
+            # dspark-recipe overlay's production-validated sm120.py branch.
+            return DeepseekV4B12XSM120Attention
         return DeepseekV4FlashInferSM120Attention
     return DeepseekV4FlashMLAAttention
 
