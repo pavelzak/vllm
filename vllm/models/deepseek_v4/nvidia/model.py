@@ -791,7 +791,15 @@ def _select_dsv4_attn_cls(vllm_config: VllmConfig) -> type[DeepseekV4Attention]:
             DeepseekV4B12XSM120Attention,
             use_b12x_compressed_mla,
         )
+        from vllm.models.deepseek_v4.nvidia.jit_sparse import (
+            DeepseekV4JITSparseSM120Attention,
+            use_sm120_jit_attn,
+        )
 
+        if use_sm120_jit_attn():
+            # JIT warp-spec sparse-MLA kernels (flashinfer 0.6.17): the
+            # kernel family the dspark image ran CUDA graphs + DSpark on.
+            return DeepseekV4JITSparseSM120Attention
         if use_b12x_compressed_mla():
             # b12x compressed-MLA decode (prefill stays on FlashInfer):
             # page-size agnostic and CUDA-graph capture-safe; ported from the
