@@ -58,6 +58,37 @@ def _paged_attention():
     return _sparse_mla_sm120_paged_attention
 
 
+
+def _check_decode_dispatch(
+    num_tokens: int,
+    num_heads: int,
+    topk: int,
+    kv_cache: torch.Tensor,
+    extra_topk: int,
+    where: str,
+) -> None:
+    """Fail with named shapes when a <=64-token call cannot dispatch.
+
+    Non-dispatchable small calls fall into the JIT prefill orchestrator,
+    which dies with an unhelpful `num_tokens > 64` check failure.
+    """
+    from flashinfer.mla._sparse_mla_sm120 import _decode_dsv4_dispatchable
+
+    page_block_size = int(kv_cache.shape[1])
+    if not _decode_dsv4_dispatchable(
+        num_tokens, num_heads, topk, 512, page_block_size, extra_topk
+    ):
+        raise RuntimeError(
+            f"SM120 JIT sparse-MLA {where} call is not decode-dispatchable: "
+            f"num_tokens={num_tokens} num_heads={num_heads} topk={topk} "
+            f"page_block_size={page_block_size} extra_topk={extra_topk}. "
+            "Requirements: page_block_size == 64 and (num_heads, topk) in "
+            "flashinfer.mla._sparse_mla_sm120._DECODE_DSV4_DISPATCH "
+            "(topk in {128, 512, 1024}; indices must be padded to a "
+            "supported width, cf. noncausal_index_width in sparse_swa.py)."
+        )
+
+
 class DeepseekV4JITSparseSM120Attention(DeepseekV4FlashInferSM120Attention):
     """SM120 attention with decode+prefill on the JIT warp-spec kernel family."""
 
@@ -134,6 +165,15 @@ class DeepseekV4JITSparseSM120Attention(DeepseekV4FlashInferSM120Attention):
             swa_indices.shape[-1],
             extra_topk,
         )
+        if num_decode_tokens <= _DECODE_MAX_TOKENS:
+            _check_decode_dispatch(
+                num_decode_tokens,
+                q.shape[1],
+                swa_indices.shape[-1],
+                self.swa_cache_layer.kv_cache,
+                extra_topk,
+                "decode",
+            )
         _paged_attention()(
             q=q,
             kv_cache=self.swa_cache_layer.kv_cache,
@@ -263,6 +303,14 @@ class DeepseekV4JITSparseSM120Attention(DeepseekV4FlashInferSM120Attention):
                     output.shape[-1],
                     swa_metadata.prefill_swa_indices.shape[-1],
                     extra_topk,
+                )
+                _check_decode_dispatch(
+                    chunk_tokens,
+                    q.shape[1],
+                    swa_metadata.prefill_swa_indices.shape[-1],
+                    swa_k_cache,
+                    extra_topk,
+                    "prefill-chunk",
                 )
 
             _paged_attention()(
