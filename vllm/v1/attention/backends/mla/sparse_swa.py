@@ -378,11 +378,21 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
         # the q-head count to B_TOPK (64/128), which requires the index width to be
         # a multiple of 128.
         self.is_dspark = spec_config is not None and spec_config.use_dspark()
-        self.noncausal_index_width = (
-            cdiv(self.window_size + self.num_speculative_tokens, 128) * 128
-            if self.is_dspark
-            else 0
-        )
+        # SM120 JIT decode kernels (flashinfer _sparse_mla_sm120) dispatch only
+        # for topk in {128, 512, 1024}; pad the non-causal width up to the next
+        # supported value (extra slots are masked via topk_length, so the only
+        # cost is a wider gather on the 3 draft layers). 128+k rounds to 256
+        # under the plain cdiv, which no decode kernel instantiation accepts.
+        if self.is_dspark:
+            needed = self.window_size + self.num_speculative_tokens
+            width = cdiv(needed, 128) * 128
+            for supported in (128, 512, 1024):
+                if needed <= supported:
+                    width = supported
+                    break
+            self.noncausal_index_width = width
+        else:
+            self.noncausal_index_width = 0
         self.decode_swa_indices_noncausal: torch.Tensor | None = None
         self._max_tokens = max_tokens
 
